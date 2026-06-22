@@ -11,10 +11,6 @@ type Flashcard = {
   known: boolean;
 };
 
-/* =========================
-   FINAL STORAGE SYSTEM
-========================= */
-
 const DB_KEY = "studyhub_db";
 
 type StudyHubDB = {
@@ -36,7 +32,6 @@ type StudyHubDB = {
 
 const getDB = (): StudyHubDB => {
   if (typeof window === "undefined") return { subjects: [] };
-
   const data = localStorage.getItem(DB_KEY);
   return data ? JSON.parse(data) : { subjects: [] };
 };
@@ -60,14 +55,12 @@ export default function FolderPage() {
 
   const [editCard, setEditCard] = useState<Flashcard | null>(null);
   const [deleteCard, setDeleteCard] = useState<Flashcard | null>(null);
+  const [deleteAllOpen, setDeleteAllOpen] = useState(false);
 
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<"all" | "known" | "unknown">("all");
 
-  /* =========================
-     LOAD FROM DB
-  ========================= */
-
+  /* LOAD */
   useEffect(() => {
     const db = getDB();
 
@@ -91,24 +84,35 @@ export default function FolderPage() {
     );
   }, [subject, folder]);
 
-  /* =========================
-     SAVE TO DB
-  ========================= */
-
+  /* SAVE (FIXED) */
   useEffect(() => {
     const db = getDB();
 
-    const subjectData = db.subjects.find(
+    let subjectData = db.subjects.find(
       (s) => s.name.toLowerCase() === subject.toLowerCase()
     );
 
-    if (!subjectData) return;
+    if (!subjectData) {
+      subjectData = {
+        id: crypto.randomUUID(),
+        name: subject,
+        folders: [],
+      };
+      db.subjects.push(subjectData);
+    }
 
-    const folderData = subjectData.folders.find(
+    let folderData = subjectData.folders.find(
       (f) => f.name.toLowerCase() === folder.toLowerCase()
     );
 
-    if (!folderData) return;
+    if (!folderData) {
+      folderData = {
+        id: crypto.randomUUID(),
+        name: folder,
+        cards: [],
+      };
+      subjectData.folders.push(folderData);
+    }
 
     folderData.cards = cards.map((c) => ({
       id: c.id,
@@ -120,36 +124,30 @@ export default function FolderPage() {
     saveDB(db);
   }, [cards, subject, folder]);
 
-  /* =========================
-     FILTER
-  ========================= */
-
-  const filteredCards = cards.filter((c) => {
-    const matchesSearch =
+  /* FILTER */
+  const filtered = cards.filter((c) => {
+    const matchSearch =
       c.begrip.toLowerCase().includes(search.toLowerCase()) ||
       c.uitleg.toLowerCase().includes(search.toLowerCase());
 
-    const matchesMode =
+    const matchMode =
       mode === "all"
         ? true
         : mode === "known"
         ? c.known
         : !c.known;
 
-    return matchesSearch && matchesMode;
+    return matchSearch && matchMode;
   });
 
-  const activeCard = filteredCards[current];
+  const active = filtered[current];
 
-  /* =========================
-     ACTIONS
-  ========================= */
-
+  /* ACTIONS */
   const addCard = () => {
-    if (!begrip.trim() || !uitleg.trim()) return;
+    if (!begrip || !uitleg) return;
 
-    setCards((prev) => [
-      ...prev,
+    setCards((p) => [
+      ...p,
       {
         id: crypto.randomUUID(),
         begrip,
@@ -164,42 +162,44 @@ export default function FolderPage() {
 
   const removeCard = () => {
     if (!deleteCard) return;
-
-    setCards((prev) => prev.filter((c) => c.id !== deleteCard.id));
+    setCards((p) => p.filter((c) => c.id !== deleteCard.id));
     setDeleteCard(null);
+  };
+
+  const deleteAll = () => {
+    setCards([]);
+    setDeleteAllOpen(false);
   };
 
   const saveEdit = () => {
     if (!editCard) return;
 
-    setCards((prev) =>
-      prev.map((c) => (c.id === editCard.id ? editCard : c))
+    setCards((p) =>
+      p.map((c) => (c.id === editCard.id ? editCard : c))
     );
 
     setEditCard(null);
   };
 
-  const markKnown = (value: boolean) => {
-    if (!activeCard) return;
+  const markKnown = (v: boolean) => {
+    if (!active) return;
 
-    setCards((prev) =>
-      prev.map((c) =>
-        c.id === activeCard.id ? { ...c, known: value } : c
+    setCards((p) =>
+      p.map((c) =>
+        c.id === active.id ? { ...c, known: v } : c
       )
     );
   };
 
-  const nextCard = () => {
-    if (!filteredCards.length) return;
-    setCurrent((p) => (p + 1) % filteredCards.length);
+  const next = () => {
+    if (!filtered.length) return;
+    setCurrent((p) => (p + 1) % filtered.length);
     setFlipped(false);
   };
 
-  const prevCard = () => {
-    if (!filteredCards.length) return;
-    setCurrent((p) =>
-      p === 0 ? filteredCards.length - 1 : p - 1
-    );
+  const prev = () => {
+    if (!filtered.length) return;
+    setCurrent((p) => (p === 0 ? filtered.length - 1 : p - 1));
     setFlipped(false);
   };
 
@@ -224,40 +224,64 @@ export default function FolderPage() {
     );
   }, [cards]);
 
-  /* =========================
-     UI
-  ========================= */
-
+  /* UI */
   return (
     <main className="min-h-screen flex bg-[#181818] text-white">
-      {/* SIDEBAR */}
+      {/* Sidebar */}
       <aside className="w-64 bg-[#0054c9] border-r-4 border-[#1700c9] flex flex-col">
-        <Link href="/flashcards">
-          <div className="h-28 flex items-center justify-center border-b-4 border-[#1700c9]">
-            <h1 className="text-3xl font-bold">StudyHub</h1>
+        <Link href="/">
+          <div className="h-28 flex items-center justify-center border-b-4 border-[#1700c9] cursor-pointer">
+            <div className="text-center">
+              <h1 className="text-3xl font-bold">
+                StudyHub
+              </h1>
+              <p className="text-xs">
+                Learn. Plan. Succeed.
+              </p>
+            </div>
           </div>
         </Link>
+
+        <div className="p-4 flex flex-col gap-4">
+          <button className="bg-blue-700 rounded-xl p-4 text-lg">
+            Flashcards
+          </button>
+
+          <Link href="/samenvattingen">
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Samenvattingen
+            </button>
+          </Link>
+
+          <Link href="/oefenvragen">
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Oefenvragen
+            </button>
+          </Link>
+
+          <Link href="/leer-videos">
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Leer video's
+            </button>
+          </Link>
+        </div>
       </aside>
 
       {/* CONTENT */}
       <section className="flex-1 p-10 relative">
-        <Link href={`/flashcards/${subject}`}>
-          <h2 className="text-3xl font-bold cursor-pointer hover:underline">
-            📁 {folder}
-          </h2>
-        </Link>
 
+        <h2 className="text-3xl font-bold">📁 {folder}</h2>
         <p className="text-gray-400 mb-4">{subject}</p>
 
         <div className="mb-4">📊 Progress: {progress}%</div>
 
-        {/* SEARCH */}
-        <div className="flex gap-2 mb-6 pl-4">
+        {/* SEARCH + MODE + SHUFFLE */}
+        <div className="flex gap-2 mb-6">
           <input
             className="p-2 bg-blue-700 rounded"
-            placeholder="Zoeken..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            placeholder="Zoeken..."
           />
 
           <select
@@ -270,101 +294,123 @@ export default function FolderPage() {
             <option value="unknown">Niet gekend</option>
           </select>
 
-          <button
-            onClick={shuffle}
-            className="bg-blue-800 px-3 rounded"
-          >
+          <button onClick={shuffle} className="bg-blue-800 px-3 rounded">
             🔀 Shuffle
           </button>
         </div>
 
-        {/* ADD */}
+        {/* ADD + DELETE ALL */}
         <div className="absolute top-6 right-6 w-96 bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl">
-          <div className="p-4 border-b-4 border-[#1700c9]">
-            <h3 className="text-2xl font-bold">Flashcard toevoegen</h3>
+
+          <div className="p-4 border-b-4 border-[#1700c9] flex justify-between">
+            <h3>Flashcard toevoegen</h3>
+
+            <button
+              onClick={() => setDeleteAllOpen(true)}
+              className="bg-red-600 px-2 rounded text-sm"
+            >
+              Verwijder alles
+            </button>
           </div>
 
           <div className="p-4">
             <input
               className="w-full p-2 bg-blue-700 mb-2"
-              placeholder="Begrip"
               value={begrip}
               onChange={(e) => setBegrip(e.target.value)}
+              placeholder="Begrip"
             />
 
             <textarea
               className="w-full p-2 bg-blue-700 mb-2"
-              placeholder="Uitleg"
               value={uitleg}
               onChange={(e) => setUitleg(e.target.value)}
+              placeholder="Uitleg"
             />
 
-            <button
-              onClick={addCard}
-              className="bg-blue-800 w-full p-2 rounded"
-            >
+            <button onClick={addCard} className="bg-blue-800 w-full p-2 rounded">
               Toevoegen
             </button>
           </div>
         </div>
 
-        {/* FLASHCARD */}
-        {activeCard && (
+        {/* CARD */}
+        {active && (
           <div className="flex items-center gap-6">
-            <button onClick={prevCard} className="text-5xl">
-              ←
-            </button>
+            <button onClick={prev} className="text-4xl">←</button>
 
             <div
               onClick={() => setFlipped(!flipped)}
-              className="relative w-72 h-44 bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl flex items-center justify-center p-4 text-center cursor-pointer"
+              className="relative w-72 h-44 bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl flex items-center justify-center cursor-pointer"
             >
               <button
+                className="absolute top-2 left-2"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setEditCard(activeCard);
+                  setEditCard(active);
                 }}
-                className="absolute top-2 left-2 text-sm"
               >
                 ✏️
               </button>
 
               <button
+                className="absolute top-2 right-2 bg-red-600 w-6 h-6 rounded"
                 onClick={(e) => {
                   e.stopPropagation();
-                  setDeleteCard(activeCard);
+                  setDeleteCard(active);
                 }}
-                className="absolute top-2 right-2 bg-red-600 w-6 h-6 rounded-full"
               >
                 ✕
               </button>
 
-              {!flipped ? (
-                <h3 className="text-xl font-bold">
-                  {activeCard.begrip}
-                </h3>
-              ) : (
-                <p>{activeCard.uitleg}</p>
-              )}
+              {!flipped ? active.begrip : active.uitleg}
 
-              <div className="absolute bottom-2 flex gap-4 text-sm">
+              <div className="absolute bottom-2 flex gap-2">
                 <button onClick={() => markKnown(true)}>✔</button>
                 <button onClick={() => markKnown(false)}>✖</button>
               </div>
             </div>
 
-            <button onClick={nextCard} className="text-5xl">
-              →
-            </button>
+            <button onClick={next} className="text-4xl">→</button>
           </div>
         )}
 
-        {/* EDIT */}
+        {/* DELETE ALL MODAL */}
+        {deleteAllOpen && (
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
+            <div className="bg-[#0054c9] p-6 w-96 rounded-xl border-4 border-red-600">
+              <h3 className="text-xl mb-3">
+                Weet je zeker dat je alles wilt verwijderen?
+              </h3>
+
+              <p className="text-sm mb-4 text-gray-200">
+                Dit kan niet ongedaan worden gemaakt.
+              </p>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setDeleteAllOpen(false)}
+                  className="flex-1 bg-blue-700 p-2 rounded"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={deleteAll}
+                  className="flex-1 bg-red-600 p-2 rounded"
+                >
+                  Alles verwijderen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* EDIT MODAL */}
         {editCard && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
-            <div className="bg-[#0054c9] p-4 w-96 rounded">
+            <div className="bg-[#0054c9] p-4 w-96">
               <input
-                className="w-full p-2 bg-blue-700 mb-2"
                 value={editCard.begrip}
                 onChange={(e) =>
                   setEditCard({ ...editCard, begrip: e.target.value })
@@ -372,47 +418,36 @@ export default function FolderPage() {
               />
 
               <textarea
-                className="w-full p-2 bg-blue-700 mb-2"
                 value={editCard.uitleg}
                 onChange={(e) =>
                   setEditCard({ ...editCard, uitleg: e.target.value })
                 }
               />
 
-              <button
-                onClick={saveEdit}
-                className="bg-red-600 w-full p-2"
-              >
-                Opslaan
-              </button>
+              <button onClick={saveEdit}>Opslaan</button>
             </div>
           </div>
         )}
 
-        {/* DELETE */}
+        {/* DELETE CARD MODAL */}
         {deleteCard && (
           <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
-            <div className="bg-[#0054c9] p-4 w-96 rounded">
-              <p className="mb-4">Verwijderen?</p>
+            <div className="bg-[#0054c9] p-4 w-96">
+              <p>Verwijderen?</p>
 
               <div className="flex gap-2">
-                <button
-                  onClick={() => setDeleteCard(null)}
-                  className="flex-1 bg-gray-700 p-2"
-                >
+                <button onClick={() => setDeleteCard(null)}>
                   Cancel
                 </button>
 
-                <button
-                  onClick={removeCard}
-                  className="flex-1 bg-red-600 p-2"
-                >
+                <button onClick={removeCard}>
                   Verwijderen
                 </button>
               </div>
             </div>
           </div>
         )}
+
       </section>
     </main>
   );
