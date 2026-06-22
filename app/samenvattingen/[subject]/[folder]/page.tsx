@@ -3,35 +3,12 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { loadDB, saveDB, ensureFolder } from "@/lib/studyhubDB";
 
-type Card = {
+type FileDoc = {
   id: string;
-  front: string;
-  back: string;
-};
-
-const DB_KEY = "studyhub_db";
-
-type StudyHubDB = {
-  subjects: {
-    id: string;
-    name: string;
-    folders: {
-      id: string;
-      name: string;
-      cards: Card[];
-    }[];
-  }[];
-};
-
-const getDB = (): StudyHubDB => {
-  if (typeof window === "undefined") return { subjects: [] };
-  const data = localStorage.getItem(DB_KEY);
-  return data ? JSON.parse(data) : { subjects: [] };
-};
-
-const saveDB = (db: StudyHubDB) => {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
+  name: string;
+  content: string;
 };
 
 export default function FolderPage() {
@@ -40,138 +17,164 @@ export default function FolderPage() {
   const subject = decodeURIComponent(params.subject as string);
   const folder = decodeURIComponent(params.folder as string);
 
-  const [cards, setCards] = useState<Card[]>([]);
-  const [front, setFront] = useState("");
-  const [back, setBack] = useState("");
+  const [files, setFiles] = useState<FileDoc[]>([]);
+  const [fileName, setFileName] = useState("");
 
+  // 📥 LOAD
   useEffect(() => {
-    const db = getDB();
+    const db = loadDB();
 
-    const subjectData = db.subjects.find(
-      (s) => s.name.toLowerCase() === subject.toLowerCase()
-    );
+    ensureFolder(db, subject, folder);
 
-    const folderData = subjectData?.folders.find(
-      (f) => f.name.toLowerCase() === folder.toLowerCase()
-    );
+    const folderData =
+      db.subjects?.[subject]?.folders?.[folder];
 
-    setCards(folderData?.cards || []);
+    if (!folderData) {
+      setFiles([]);
+      return;
+    }
+
+    const mappedFiles: FileDoc[] = folderData.cards.map((c) => ({
+      id: c.id,
+      name: c.begrip,
+      content: c.uitleg,
+    }));
+
+    setFiles(mappedFiles);
   }, [subject, folder]);
 
+  // 💾 SAVE
   useEffect(() => {
-    const db = getDB();
+    const db = loadDB();
 
-    const subjectData = db.subjects.find(
-      (s) => s.name.toLowerCase() === subject.toLowerCase()
-    );
+    ensureFolder(db, subject, folder);
 
-    if (!subjectData) return;
+    const subjectData = db.subjects[subject];
+    const folderData = subjectData.folders[folder];
 
-    const folderData = subjectData.folders.find(
-      (f) => f.name.toLowerCase() === folder.toLowerCase()
-    );
+    folderData.cards = files.map((f) => ({
+      id: f.id,
+      begrip: f.name,
+      uitleg: f.content,
+      known: false,
+    }));
 
-    if (!folderData) return;
-
-    folderData.cards = cards;
     saveDB(db);
-  }, [cards, subject, folder]);
+  }, [files, subject, folder]);
 
-  const addCard = () => {
-    if (!front || !back) return;
+  // ➕ NEW FILE
+  const addFile = () => {
+    if (!fileName.trim()) return;
 
-    setCards((prev) => [
-      ...prev,
-      { id: Date.now().toString(), front, back },
-    ]);
+    const newFile: FileDoc = {
+      id: Date.now().toString(),
+      name: fileName.trim().endsWith(".txt")
+        ? fileName.trim()
+        : `${fileName.trim()}.txt`,
+      content: "",
+    };
 
-    setFront("");
-    setBack("");
+    setFiles((prev) => [...prev, newFile]);
+    setFileName("");
   };
 
   return (
     <main className="min-h-screen flex bg-[#181818] text-white">
-
-      {/* Sidebar */}
+      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0054c9] border-r-4 border-[#1700c9] flex flex-col">
         <Link href="/">
           <div className="h-28 flex items-center justify-center border-b-4 border-[#1700c9] cursor-pointer">
-            <h1 className="text-3xl font-bold">StudyHub</h1>
+            <div className="text-center">
+              <h1 className="text-3xl font-bold">StudyHub</h1>
+              <p className="text-xs">Learn. Plan. Succeed.</p>
+            </div>
           </div>
         </Link>
 
         <div className="p-4 flex flex-col gap-4">
           <Link href="/flashcards">
-            <button className="bg-blue-700 rounded-xl p-4 w-full">Flashcards</button>
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Flashcards
+            </button>
           </Link>
 
           <Link href="/samenvattingen">
-            <button className="bg-blue-700 rounded-xl p-4 w-full">Samenvattingen</button>
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Samenvattingen
+            </button>
           </Link>
 
           <Link href="/oefenvragen">
-            <button className="bg-blue-700 rounded-xl p-4 w-full">Oefenvragen</button>
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Oefenvragen
+            </button>
           </Link>
 
           <Link href="/leer-videos">
-            <button className="bg-blue-700 rounded-xl p-4 w-full">Leer video's</button>
+            <button className="w-full bg-blue-700 rounded-xl p-4 text-lg">
+              Leer video's
+            </button>
           </Link>
         </div>
       </aside>
 
-      {/* Content */}
+      {/* CONTENT */}
       <section className="flex-1 p-10 relative">
-
         {/* BACK */}
         <Link href={`/samenvattingen/${subject}`}>
-          <h2 className="text-3xl font-bold mb-6 hover:underline cursor-pointer">
+          <h2 className="text-4xl font-bold mb-10 cursor-pointer hover:underline">
             📁 {folder}
           </h2>
         </Link>
 
-        {/* ADD */}
+        {/* NEW FILE BOX */}
         <div className="absolute top-6 right-6 w-96 bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl">
-          <div className="p-4 border-b-4">
-            <h3 className="text-2xl font-bold">Samenvatting toevoegen</h3>
+          <div className="p-4 border-b-4 border-[#1700c9]">
+            <h3 className="text-2xl font-bold">Nieuw bestand</h3>
           </div>
 
           <div className="p-4">
             <input
-              className="w-full p-3 bg-blue-700 mb-2"
-              placeholder="Titel"
-              value={front}
-              onChange={(e) => setFront(e.target.value)}
-            />
-
-            <textarea
-              className="w-full p-3 bg-blue-700 mb-2"
-              placeholder="Uitleg"
-              value={back}
-              onChange={(e) => setBack(e.target.value)}
+              value={fileName}
+              onChange={(e) => setFileName(e.target.value)}
+              placeholder="Bestandsnaam"
+              className="w-full p-3 rounded bg-blue-700 mb-3"
             />
 
             <button
-              onClick={addCard}
-              className="w-full bg-blue-800 p-3 rounded"
+              onClick={addFile}
+              className="w-full bg-blue-800 rounded p-3"
             >
-              Toevoegen
+              Bestand maken
             </button>
           </div>
         </div>
 
-        {/* CARDS */}
-        <div className="grid gap-4 max-w-3xl">
-          {cards.map((c) => (
-            <div
-              key={c.id}
-              className="bg-[#0054c9] border-4 border-[#1700c9] p-4 rounded-2xl"
+        {/* FILE LIST */}
+        <div className="flex flex-col gap-3 w-full max-w-2xl">
+          {files.map((file) => (
+            <Link
+              key={file.id}
+              href={`/samenvattingen/${subject}/${folder}/${file.id}`}
             >
-              <h3 className="font-bold">{c.front}</h3>
-              <p className="text-sm opacity-80 mt-2">{c.back}</p>
-            </div>
+              <div className="bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl p-6 cursor-pointer hover:opacity-80 transition">
+                <h3 className="text-xl font-bold">
+                  📄 {file.name}
+                </h3>
+
+                <p className="text-sm opacity-70 mt-2">
+                  Klik om te openen
+                </p>
+              </div>
+            </Link>
           ))}
         </div>
 
+        {files.length === 0 && (
+          <div className="mt-10 text-gray-400">
+            Nog geen bestanden in deze map.
+          </div>
+        )}
       </section>
     </main>
   );
