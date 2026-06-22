@@ -23,17 +23,23 @@ type StudyHubDB = {
   }[];
 };
 
+// 🔒 SAFE DB LOADER
 const getDB = (): StudyHubDB => {
   if (typeof window === "undefined") return { subjects: [] };
-  const data = localStorage.getItem(DB_KEY);
-  return data ? JSON.parse(data) : { subjects: [] };
+
+  try {
+    const data = localStorage.getItem(DB_KEY);
+    return data ? JSON.parse(data) : { subjects: [] };
+  } catch {
+    return { subjects: [] };
+  }
 };
 
 const saveDB = (db: StudyHubDB) => {
   localStorage.setItem(DB_KEY, JSON.stringify(db));
 };
 
-// 🔥 FIX: slug systeem (BELANGRIJK)
+// 🔥 SLUG
 const createSlug = (text: string) => {
   return text
     .toLowerCase()
@@ -49,6 +55,9 @@ export default function SubjectPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [input, setInput] = useState("");
 
+  // =========================
+  // LOAD DATA
+  // =========================
   useEffect(() => {
     const db = getDB();
 
@@ -56,9 +65,16 @@ export default function SubjectPage() {
       (s) => s.name.toLowerCase() === subject.toLowerCase()
     );
 
-    setFolders(found?.folders || []);
+    if (found) {
+      setFolders(found.folders || []);
+    } else {
+      setFolders([]);
+    }
   }, [subject]);
 
+  // =========================
+  // SAVE DATA (SAFE FIXED)
+  // =========================
   useEffect(() => {
     const db = getDB();
 
@@ -66,19 +82,25 @@ export default function SubjectPage() {
       (s) => s.name.toLowerCase() === subject.toLowerCase()
     );
 
+    // 🔥 FIX: ALWAYS CREATE IF MISSING
     if (!subjectData) {
       subjectData = {
         id: Date.now().toString(),
         name: subject,
         folders: [],
       };
+
       db.subjects.push(subjectData);
     }
 
     subjectData.folders = folders;
+
     saveDB(db);
   }, [folders, subject]);
 
+  // =========================
+  // ADD FOLDER
+  // =========================
   const addFolder = () => {
     if (!input.trim()) return;
 
@@ -93,10 +115,13 @@ export default function SubjectPage() {
     setInput("");
   };
 
+  // =========================
+  // UI
+  // =========================
   return (
     <main className="min-h-screen flex bg-[#181818] text-white">
 
-      {/* Sidebar */}
+      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0054c9] border-r-4 border-[#1700c9] flex flex-col">
         <Link href="/">
           <div className="h-28 flex items-center justify-center border-b-4 border-[#1700c9] cursor-pointer">
@@ -134,7 +159,7 @@ export default function SubjectPage() {
         </div>
       </aside>
 
-      {/* Content */}
+      {/* CONTENT */}
       <section className="flex-1 p-10 relative">
 
         {/* BACK */}
@@ -144,7 +169,7 @@ export default function SubjectPage() {
           </h2>
         </Link>
 
-        {/* ADD */}
+        {/* ADD BOX */}
         <div className="absolute top-6 right-6 w-96 bg-[#0054c9] border-4 border-[#1700c9] rounded-2xl">
           <div className="p-4 border-b-4 border-[#1700c9]">
             <h3 className="text-2xl font-bold">Map toevoegen</h3>
@@ -180,6 +205,12 @@ export default function SubjectPage() {
             </Link>
           ))}
         </div>
+
+        {folders.length === 0 && (
+          <div className="mt-10 text-gray-400">
+            Nog geen mappen toegevoegd.
+          </div>
+        )}
 
       </section>
     </main>
