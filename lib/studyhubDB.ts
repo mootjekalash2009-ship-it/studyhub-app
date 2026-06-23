@@ -53,3 +53,15 @@ export function ensureFolder(db: DB, subject: string, folder: string) {
     db.subjects[subject].folders[folder] = { cards: [] };
   }
 }
+
+export const getDB = () => {
+  if (typeof window === "undefined")
+    return { subjects: [] };
+
+  try {
+    const data = localStorage.getItem("studyhub_db");
+    return data ? JSON.parse(data) : { subjects: [] };
+  } catch {
+    return { subjects: [] };
+  }
+};
